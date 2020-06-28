@@ -15,13 +15,15 @@
 package parse_doc
 
 import (
+	"cod/datastore"
 	"github.com/stretchr/testify/require"
+	"sort"
 	"testing"
 )
 
 func TestParseArgparse(t *testing.T) {
-	parseCompletions := func(executablePath, text string) (res []string) {
-		ctx, err := makeParseContext(executablePath, text)
+	parseCompletions := func(args []string, text string) (res []string) {
+		ctx, err := makeParseContext(args, text)
 		require.NoError(t, err)
 
 		parseResult, err := makeArgparseParser().Parse(ctx)
@@ -44,7 +46,7 @@ func TestParseArgparse(t *testing.T) {
 			"--help",
 			"--version",
 		},
-		parseCompletions("/usr/bin/asciinema", asciicinemaHelp),
+		parseCompletions([]string{"/usr/bin/asciinema", "--help"}, asciicinemaHelp),
 	)
 
 	require.Equal(
@@ -61,7 +63,50 @@ func TestParseArgparse(t *testing.T) {
 			"-v",
 			"--verbose",
 		},
-		parseCompletions("/home/user/.local/bin/do.py", doPyHelp),
+		parseCompletions([]string{"/home/user/.local/bin/do.py", "--help"}, doPyHelp),
+	)
+}
+
+func TestParseArgparseContext(t *testing.T) {
+	ctx, err := makeParseContext([]string{"/usr/bin/asciinema", "rec", "--help"}, asciinemaRecHelp)
+	require.NoError(t, err)
+
+	parseResult, err := makeArgparseParser().Parse(ctx)
+	require.NoError(t, err)
+	sort.Slice(parseResult.completions, func(i, j int) bool {
+		return parseResult.completions[i].Flag < parseResult.completions[j].Flag
+	})
+	argparseContext := func(subCommand []string) datastore.FlagContext {
+		return datastore.FlagContext{
+			SubCommand: subCommand,
+			Framework:  "argparse",
+		}
+	}
+	require.Equal(
+		t,
+		[]datastore.Completion{
+			{"--append", argparseContext([]string{"rec"})},
+			{"--command", argparseContext([]string{"rec"})},
+			{"--env", argparseContext([]string{"rec"})},
+			{"--help", argparseContext([]string{"rec"})},
+			{"--idle-time-limit", argparseContext([]string{"rec"})},
+			{"--overwrite", argparseContext([]string{"rec"})},
+			{"--quiet", argparseContext([]string{"rec"})},
+			{"--raw", argparseContext([]string{"rec"})},
+			{"--stdin", argparseContext([]string{"rec"})},
+			{"--title", argparseContext([]string{"rec"})},
+			{"--yes", argparseContext([]string{"rec"})},
+			{"-c", argparseContext([]string{"rec"})},
+			{"-e", argparseContext([]string{"rec"})},
+			{"-h", argparseContext([]string{"rec"})},
+			{"-i", argparseContext([]string{"rec"})},
+			{"-q", argparseContext([]string{"rec"})},
+			{"-t", argparseContext([]string{"rec"})},
+			{"-y", argparseContext([]string{"rec"})},
+			// FIXME: this is bug, we should only parse `-y` single time
+			{"-y", argparseContext([]string{"rec"})},
+		},
+		parseResult.completions,
 	)
 }
 
@@ -99,6 +144,32 @@ example usage:
 
 For help on a specific command run:
   asciinema <command> -h
+`
+
+var asciinemaRecHelp = `usage: asciinema rec [-h] [--stdin] [--append] [--raw] [--overwrite]
+                     [-c COMMAND] [-e ENV] [-t TITLE] [-i IDLE_TIME_LIMIT]
+                     [-y] [-q]
+                     [filename]
+
+positional arguments:
+  filename              filename/path to save the recording to
+
+optional arguments:
+  -h, --help            show this help message and exit
+  --stdin               enable stdin recording, disabled by default
+  --append              append to existing recording
+  --raw                 save only raw stdout output
+  --overwrite           overwrite the file if it already exists
+  -c COMMAND, --command COMMAND
+                        command to record, defaults to $SHELL
+  -e ENV, --env ENV     list of environment variables to capture, defaults to
+                        SHELL,TERM
+  -t TITLE, --title TITLE
+                        title of the asciicast
+  -i IDLE_TIME_LIMIT, --idle-time-limit IDLE_TIME_LIMIT
+                        limit recorded idle time to given number of seconds
+  -y, --yes             answer "yes" to all prompts (e.g. upload confirmation)
+  -q, --quiet           be quiet, suppress all notices/warnings (implies -y)
 `
 
 var doPyHelp = `usage: do.py [-h] [-q | -v] command ...
